@@ -136,3 +136,11 @@ subset(DFM, X3A_CODE %in% c("COD") & Region %in% c("27_1","27_2"))
 
 #Pandalus in area I and II
 subset(DFM, X3A_CODE %in% c("PYX","PWY","PRA","PJK","AES","DUD","DUJ","DUK","DLN","DLS","PAN")  & Region %in% c("27_1","27_2"))
+
+#Mac outside area 3 and 4
+subset(DFM, X3A_CODE %in% c("MAC")  & !(Region %in% c("27_4","27_3")))
+
+#Mac overall
+subset(DFM, X3A_CODE %in% c("MAC")  & Region %in% c("27"))
+
+
