@@ -14,7 +14,7 @@ Before running a couple of things need to be done
 ## Inputs
 
 1.    fish_ca_atl27.tsv: new file downloaded from EORUSTAT
-2.    EU opening quota.csv: Using the file Joel distributed September 2018 *remember to add code for StockID in script 3_*
+2.    EU opening quota 2017.csv: Using the file Joel distributed September 2018 *remember to add code for StockID in script 3_*
 3.    Nephrops landings 2015.csv: Using the file from 2016. Don't know who made it and how.
 4.    RCM MED landings.csv: Using the file from 2016 - not relevant for Denmark
 5.    patch_codIIIa_DNK.txt: Updated the file from 2016 with figures from advice sheet
