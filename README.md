@@ -1,10 +1,10 @@
 # EUMAP_table_1a
 
-##Inputs
+## Inputs
 
 
 
 # 1_table_1a_correcting species names
 
 
-#2_table_1a
+# 2_table_1a
