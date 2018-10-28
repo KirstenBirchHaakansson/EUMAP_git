@@ -3,9 +3,11 @@
 
 library(plyr)
 
-sharePath <- "M:/DCF/AP/2017/Programs/Tabel_1A/"
+input_path <- "Q:/scientific-projects/eu-data-collection/Work_Plan/2019/scripts/EUMAP_table_1a/input"
 
-share<-read.table(file.path(sharePath, 'EUMAP_Table1A_Linkage_EUROSTAT and EC_TAC_DNK.csv'), sep=";",header=T, colClasses = ("character"))
+linkage <- read.table(file.path(input_path, 'EUMAP_Table1A_Linkage_EUROSTAT and EC_TAC_V0.csv'), sep = ";", header = T, colClasses = ("character"))
+
+#There is something wrong with the input file
 
 share<-subset(share, latinName!="Elasmobranchii")
 
