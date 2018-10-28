@@ -1,0 +1,252 @@
+---
+title: "R script to construct Table 1A by country"
+author: Joel Vigneau, with the collaboration of Matt Elliott, Jon Elson, Kirsten Birch   Hakansson,
+  Marie Storr-Paulsen, Nuno Prista, Katja Ringhdal, Lies Vansteenbrugge,   Sieto Verver
+date: "October 2016"
+output: html_document
+---
+
+Based on the 3_Filling Table 1A_DNK_v3 from 2016
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Filling of the EU-MAP table 1A requires to report on country shares of landings and shares of EU TAC when relevant, for all the stocks listed in table 1A of the EU-MAP Regulation (EU Decision 1254/2016). This process necessitates to gather information on landings and EU TAC from an official database, namely EUROSTAT for EU landings and MARE/FIDES for EU TAC. 
+
+Two datasets were added to complete the references, (1) the Nephrops FU landings provided by ICES and (2) the Mediterranean and Black Sea landings fisgures put together by 2016 RCM Mediterranean and Black Sea.
+
+First of all, the datasets listed above contain information from all EU Member States, which means that the script has the potential to be used by all Member States, and by STECF for control of the NWP submitted for 2017. 
+
+
+## Setting the parameters for the analysis
+The variables needed for the work are the working directory, the country code (2-letter code) and the reference years 
+
+
+```{r warning=FALSE}
+  library(tidyr)
+  library(plyr) 
+  library(reshape2)
+  setwd('.')
+  CTRY <- 'DK'
+  refYears <- 2015:2017
+  
+  input_path <- "Q:/scientific-projects/eu-data-collection/Work_Plan/2019/scripts/EUMAP_table_1a/input"
+```
+## Importing the datasets
+The list of datasets are the following :
+
+1. Landings and TAC shares files: 
+  + EUROSTAT landings files: http://ec.europa.eu/eurostat/web/fisheries/data/database
+  + MARE/FIDES TAC file: https://webgate.ec.europa.eu/fides/index.cfm
+  + ICES Nephrops fishery units landings per country for 2015
+  + RCM Mediterranean and Black Sea 2016 landings compilation
+  
+  
+```{r}
+DF  <- read.table(file.path(input_path, "fish_ca_atl27.tsv"), header = TRUE, sep = '\t', as.is = TRUE)  # Atlantic NE
+TAC <- read.csv(file.path(input_path, 'EU opening quota 2017.csv'), header = TRUE, sep = ';', as.is = TRUE) 
+NEP <- read.csv(file.path(input_path, 'Nephrops landings 2015.csv'), header = TRUE, sep = ';', as.is = TRUE)
+MED <- read.csv(file.path(input_path, 'RCM MED landings.csv'), header = TRUE, sep = ';', as.is = TRUE)
+COD <- read.table(file.path(input_path, 'patch_codIIIa_DNK.txt'), sep = '\t', header = TRUE, as.is = TRUE)
+```
+2. Reference tables:
+  + EuroStat Geo.def: full names of countries
+  + ASFIS file : FAO species naming and coding
+  + Linkage table mirroring EU-MAP Table 1A naming of species and stock area, and lining to EUROSTAT and MARE/FIDES species and area naming
+
+```{r}
+GEO     <- read.table(file.path(input_path, 'geo.def'), header = TRUE, sep = ";", as.is = TRUE)
+ASFIS   <- read.table(file.path(input_path, 'ASFIS_sp_Feb_2012.txt'), header = TRUE, sep = "\t", as.is = TRUE)
+table1A <- read.table(file.path(input_path, 'EUMAP_Table1A_Linkage_EUROSTAT and EC_TAC_DNK_v3.csv'), sep = ';', header = TRUE, as.is = TRUE)
+```
+
+## data.frame preparation
+The country names are matching between GEO and TAC data.frame, except for UK, so the following lines enables the full match.
+
+```{r warning = FALSE}
+TAC$StockID <- paste(TAC$Species.Code, TAC$Area.Code, sep = "")
+TAC$Level.Description[substring(TAC$Level.Description,1,3) %in% 'U.K'] <- 'United Kingdom'
+```
+
+
+The TAC dataset is well structured and thus ready for the analysis
+```{r warning = FALSE}
+head(TAC,3)
+names(GEO)[2] <- "Country"
+GEO$geo <- toupper(GEO$geo) #2-letter code should be in capitals
+SRG <- strsplit(as.character(DF$species.fishreg.unit.geo.time),split=",")
+SRG.m <- matrix(unlist(SRG), ncol=4, byrow=TRUE)
+coln <- sapply(refYears, function(x) which(grepl(x,names(DF))))
+DFT <- data.frame(X3A_CODE = toupper(SRG.m[,1]), area = toupper(SRG.m[,2]), geo = SRG.m[,4],
+Y1 = DF[,coln[1]], Y2 = DF[,coln[2]], Y3 = DF[,coln[3]])
+DFM <- merge(DFT, GEO, all.x=TRUE)
+DFM$Y1 <- as.numeric(str_remove_all(as.character(DFM$Y1), "[bcdefinpzsu]")) #Removing characthers in amount
+DFM$Y2 <- as.numeric(str_remove_all(as.character(DFM$Y2), "[bcdefinpzsu]")) #Removing characthers in amount
+DFM$Y3 <- as.numeric(str_remove_all(as.character(DFM$Y3), "[bcdefinpzsu]")) #Removing characthers in amount
+DFM <- DFM[!is.na(DFM$Country),]
+DFM <- merge(DFM, ASFIS[,c(3:6)], all.x=TRUE)
+```
+Let's have a look at the workable structure of EuroStat dataset. Note that Y1, Y2 and Y3 are the 3-year period demanded, and the presence of NA's. The assumption made here (further in the Construction of the table section) is to exclude NA from the average, i.e. like if MS had omitted to report, instead of a NA which would mean 0. The confusion comes because lots of 0 are reported in EuroStat (implicitely meaning that NA is not a 0). This point may be subject of a STECF agreement or suggestion for modification.
+```{r warning = FALSE}
+head(DFM,3)
+NEP <- merge(NEP, GEO, all.x=TRUE)
+NEP$geo[is.na(NEP$geo)] <- 'UK'
+NEP2 <- data.frame(X3A_CODE='NEP', geo=NEP$geo, area=NEP$Stock, Y1=round(NEP$TotalLanding.in.kg/1000,0), Y2=NA, Y3=NA, Country=NEP$Country, Scientific_name='Nephrops norvegicus', English_name='Norway lobster', French_name='Langoustine')
+```
+A look at the Nephrops dataset on the same format as EuroStat dataset, so they can be merged
+```{r warning = FALSE}
+head(NEP2)
+DFM <- rbind.data.frame(DFM, NEP2)
+MEDA <- merge(MED, ASFIS[,c(3,4,5,6)], by.x='Species', by.y='Scientific_name', all.x=TRUE)
+MEDA <- tidyr::gather(MEDA,"Country","n",4:13) 
+MEDAG <- merge(MEDA, GEO, all.x=TRUE)
+```
+and a look at the Mediterranean dataset
+```{r warning = FALSE}
+head(MEDAG,3)
+MED <- data.frame(X3A_CODE=MEDAG$X3A_CODE, geo=MEDAG$geo, area=MEDAG$Area, Y1=round(MEDAG$n,0),
+                   Y2=NA, Y3=NA, Country=MEDAG$Country, Scientific_name=MEDAG$Species, English_name=MEDAG$English_name,
+                   French_name=NA)
+DFM <- rbind.data.frame(DFM, MED)
+```
+
+#Include cod in Skagerrak and Kattegat
+```{r, warning=F}
+head(COD)
+
+cod20<-COD[,c(1,3,4)]
+cod20$area<-"27_3_A_20"
+cod20a<-dcast(cod20,geo+area~year,value.var = "IIIaN")
+cod21<-COD[,c(1,3,5)]
+cod21$area<-"27_3_A_21"
+cod21a<-dcast(cod21,geo+area~year,value.var = "IIIaS")
+
+cod<-rbind(cod21a,cod20a)
+cod
+cod2 <- data.frame(X3A_CODE='COD', geo=cod$geo, area=cod$area, Y1=cod$"2015", Y2=cod$"2016", Y3=cod$"2017", Country=cod$geo, Scientific_name='Gadus morhua', English_name='COD', French_name='NA')
+
+DFM <- rbind.data.frame(DFM, cod2)
+```
+
+
+## Construction of the table
+```{r}
+T1A <- data.frame()
+for (i in 1:nrow(table1A)) {
+	ctry2 <- GEO$Country[GEO$geo %in% CTRY]
+	if (substring(table1A$region[i], 1,3) %in% 'Med') {
+	  reg <- table1A$areaBis[i]
+	} else {
+	  reg <- strsplit(as.character(table1A$areaBis[i]), split=',')
+	}
+	ting<-unlist(strsplit(table1A$latinName[i], split=","))
+	DT <- DFM[DFM$Scientific_name %in% ting & DFM$area %in% reg[[1]],]
+	
+    print(DT)
+    # removes lines with only NAs
+    DT[is.na(DT)]<-0
+    DT<-DT[!(is.na(DT$Y1) & is.na(DT$Y2) & is.na(DT$Y3)),]
+    # aggregates
+
+
+	DT$MOY <- apply(DT[,4:6],1,mean,na.rm=TRUE)
+	RFMO <- 'ICES'
+	if (substring(table1A$region[i],1,3) %in% 'Med') RFMO <- 'GFCM' 
+	T1 <- data.frame(MS=CTRY, refYears='2015-2017',spp=table1A$latinName[i],region=table1A$region[i],
+		RFMO=RFMO, area = table1A$area[i],select=NA, landings=NA, TAC=NA,shareLanding=NA,Thresh='N', Comments=NA)
+	ind <- which(DT$geo %in% CTRY)
+	if (length(ind)>0) {
+		T1$landings <- sum(DT$MOY[DT$geo %in% CTRY],na.rm=TRUE)
+		T1$shareLanding <- T1$landings/sum(DT$MOY, na.rm=TRUE)
+		} else {
+		T1$landings <- 0
+		T1$shareLanding <- 0
+		}
+	
+	## TAC
+	if (!(table1A$stockID[i] %in% 'No TAC')) {
+		aa<-strsplit(as.character(table1A$stockID[i]),split=',')[[1]]
+		TACi <- TAC[TAC$StockID %in% aa,]
+		if (length(aa)>1) 
+			TACi <- aggregate(list(Initial.Quantity = TACi$Initial.Quantity), 
+				by=list(Level.Code=TACi$Level.Code, Level.Description=TACi$Level.Description), sum)
+		ind.ct <- TACi$Initial.Quantity[which(TACi$Level.Description %in% ctry2)]
+		ind.eu <- TACi$Initial.Quantity[which(TACi$Level.Code %in% 'EEC')]
+		if (length(ind.ct) == 1) T1$TAC <- ind.ct/ind.eu
+		T1$Comments<-NA
+		TT <- tapply(TACi$Initial.Quantity, TACi$Level.Description,sum,na.rm=TRUE)/TACi$Initial.Quantity[TACi$Level.Code %in% 'EEC']
+		TT <-  TT[names(TT) %in% GEO$Country]  #Keep only the EU countries to calculate the 25% rule
+		if (!(is.na(T1$TAC)) & T1$TAC <0.1 & T1$TAC>0) 	T1$Comments <- sum(TT[which(TT<0.1)])
+		if (!(is.na(T1$Comments)) & T1$Comments >=.25)	{
+			print(T1)
+			print(TT[TT<.1])
+			cat('\n')
+		}
+	}
+	T1A <- rbind.data.frame(T1A, T1)
+}
+```
+
+## Applying the Threshold rules
+All threshold rules as defined by DC-MAP threshold section (Chapter V) are addressed, i.e. No biological data need to be collected if, for a certain fish stock or species
+
+
+a. a Member State's share of the related total allowable catch (TAC) is less than 10 % of the total of the Union; or
+b. in  case  no TAC  is  fixed,  the  total  landings  of  a  Member  State  of  a  stock  or  species  are  less  than  10  %  of  the 
+average total EU landings in the previous 3 years; or
+c. the  total  annual  landings  of  a  Member  State  of  a  species  is  less  than  200  tonnes.
+
+When  the  sum  of  the  relevant  quotas  of  several  Member  States,  whose  share  of  a  TAC  is  less  than  10  %,  is  higher 
+than  25  %  of  the  share  of  the  TAC  for  a  certain  stock,  the  10  %  threshold  referred  to  under  (a)  shall  not  apply  and 
+Member  States  shall  ensure  task-sharing  at  regional  level  in  order  to ensure  that  the  stock  is  covered  by sampling in 
+concordance with end-user needs. This special provision for task sharing is also indicated, when relevant, in the Threshold section as 'sum sares < 10% = XX%'.
+
+```{r}
+T1A$Thresh <- as.character(T1A$Thresh)
+T1A$Thresh[T1A$TAC <.1] <- 'Y'  #rule (a)
+T1A$Thresh[is.na(T1A$TAC) & T1A$shareLanding <.1] <- 'Y' #rule (b)
+T1A$Thresh[T1A$landings < 200] <- 'Y'  #rule (c)
+indx <- which(T1A$TAC <.1 & T1A$Comments >=.25)
+cind <- T1A$Comments[indx]
+T1A$Comments <- ''
+T1A$Comments[indx] <- paste('sum shares <10% = ',format(100*cind,digits=3),'%',sep='')   # 25% rule, sampling to be coordinated between MS
+T1A$Thresh[indx] <- 'N'
+```
+
+##Formatting
+```{r}
+T1B <- T1A
+T1B$landings <- round(T1B$landings,0)
+T1B$landings[T1B$landings == 0] <- '-'
+T1B$TAC <- paste(round(100*T1B$TAC,0),'%',sep='')
+T1B$TAC[T1B$TAC %in% c('NA%','NaN%','Inf%')] <- '-'
+T1B$shareLanding <- paste(round(100*T1B$shareLanding,0),'%',sep='')
+T1B$shareLanding[T1B$shareLanding %in% c('NA%','NaN%','Inf%')] <- '-'
+T1B$Thresh[T1B$landings %in% '-' & T1B$TAC %in% '-'] <- T1B$shareLanding[T1B$landings %in% '-' & T1B$TAC %in% '-'] <- '-'
+T1B$select <- 'N'
+T1B$select[T1B$Thres %in% 'N'] <- 'Y'
+T1B[T1B$spp %in% 'Nephrops norvegicus' & !(grepl('TAC', T1B$area)),'TAC'] <- '-'
+levels(T1B$refYears) <- c(levels(T1B$refYears), '2015')
+T1B[T1B$spp %in% 'Nephrops norvegicus' & !(grepl('TAC', T1B$area)),'refYears'] <- '2015'
+T1B[T1B$RFMO %in% 'GFCM', 'refYears'] <- '2015'
+
+#Extra info
+T1C<-merge(T1B,table1A,by.x=c("region","spp","area"),by.y=c(c("region","latinName","area")))
+names(T1B)
+names(table1A)
+
+T1C<-rename(T1C,c("spp"="speciesIncluded","reportingName"="spp"))
+
+T1C<-T1C[,c("MS","refYears","spp","region","RFMO","area","select","landings","TAC","shareLanding","Thresh","Comments","areaBis","speciesIncluded")]
+
+
+```
+
+## Export of Table 1A
+the rule sum of quotas for coutries <10% (less or more than 25%) is noted in the comments column
+```{r}
+write.table(T1C, file=paste(CTRY,'_table1A_filled_DNK.csv',sep=''), sep=';',row.names=FALSE, quote=FALSE)
+```
+
+
